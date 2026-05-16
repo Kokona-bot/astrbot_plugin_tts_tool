@@ -11,10 +11,8 @@ from typing import Optional, AsyncGenerator
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
-from astrbot.api.all import (
-    register_llm_tool,
-    TTSProvider,
-)
+from astrbot.core.star.register import register_llm_tool
+from astrbot.core.provider.provider import TTSProvider
 
 
 @register("astrbot_plugin_tts_tool", "Kokona-bot (AI Generated)", 
