@@ -6,7 +6,7 @@ astrbot_plugin_tts_tool — AI 自主 TTS 语音插件
 """
 
 import asyncio
-from typing import Optional
+from typing import Optional, AsyncGenerator
 
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
@@ -22,30 +22,28 @@ from astrbot.api.all import (
 class TTSPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.auto_tts_enabled = True  # 默认开启自动语音
-        self.selected_tts_name: Optional[str] = None  # None = 使用系统默认
+        self.auto_tts_enabled = True
+        self.selected_tts_name: Optional[str] = None
 
     async def initialize(self):
-        """插件初始化：注册 LLM Tool、加载配置"""
-        # 从插件配置加载（如果存在）
+        """插件初始化"""
         cfg = await self.context.get_config()
         if cfg:
             self.auto_tts_enabled = cfg.get("auto_tts", True)
             self.selected_tts_name = cfg.get("tts_model", None)
 
-        # 注册 send_voice LLM Tool
         self._register_voice_tool()
         logger.info("[TTS Tool] 🎙️ 心奈的语音插件已就绪！send_voice 工具已注册喵～")
 
     def _register_voice_tool(self):
-        """注册 send_voice LLM Tool，让 AI 可以主动发送语音"""
-        plugin = self  # 闭包引用
+        """注册 send_voice LLM Tool"""
+        plugin = self
 
         @register_llm_tool(name="send_voice")
         async def send_voice(
             event: AstrMessageEvent,
             text: str,
-        ) -> None:
+        ):
             """发送 TTS 语音消息。当你想用声音表达情感、撒娇、嘲讽、或者觉得说出来的效果比打字更好时，调用此工具。
 
             Args:
@@ -56,8 +54,7 @@ class TTSPlugin(Star):
                 return
 
             try:
-                result = await plugin._speak(event, text)
-                if result:
+                async for result in plugin._speak(event, text):
                     yield result
             except Exception as e:
                 logger.error(f"[TTS Tool] send_voice 失败: {e}", exc_info=True)
@@ -67,102 +64,94 @@ class TTSPlugin(Star):
         """获取当前选择的 TTS Provider"""
         all_tts = self.context.get_all_tts_providers()
         if not all_tts:
-            logger.warning("[TTS Tool] 没有可用的 TTS Provider！请先在 WebUI 配置 TTS 模型")
+            logger.warning("[TTS Tool] 没有可用的 TTS Provider！")
             return None
 
         if self.selected_tts_name:
             for p in all_tts:
                 if p.meta().name == self.selected_tts_name:
                     return p
-            logger.warning(f"[TTS Tool] 选择的模型 '{self.selected_tts_name}' 未找到，使用默认")
+            logger.warning(f"[TTS Tool] 选择的模型 '{self.selected_tts_name}' 未找到")
 
-        # 使用默认 TTS（当前会话使用的）
         return self.context.get_using_tts_provider() or all_tts[0]
 
-    async def _speak(self, event: AstrMessageEvent, text: str) -> Optional[MessageEventResult]:
-        """核心：文本转语音并发送"""
+    async def _speak(self, event: AstrMessageEvent, text: str) -> AsyncGenerator[MessageEventResult, None]:
+        """核心：文本转语音并发送（异步生成器）"""
         tts = await self._get_tts_provider()
         if not tts:
-            return event.plain_result("❌ 没有可用的 TTS 模型，请先在 WebUI 配置喵～")
+            yield event.plain_result("❌ 没有可用的 TTS 模型，请先在 WebUI 配置喵～")
+            return
 
-        # 调用 TTS 引擎生成语音
-        # TTSProvider 通常有 text_to_speech 方法返回文件路径/URL
-        loop = asyncio.get_event_loop()
-        audio_result = await loop.run_in_executor(None, tts.text_to_speech, text)
+        try:
+            loop = asyncio.get_event_loop()
+            audio_result = await loop.run_in_executor(None, tts.text_to_speech, text)
 
-        if isinstance(audio_result, str):
-            # 返回的是文件路径
             from astrbot.api.message_components import Record
-            yield event.chain_result([Record(file=audio_result)])
-        elif isinstance(audio_result, bytes):
-            # 返回的是二进制数据
-            from astrbot.api.message_components import Record
-            yield event.chain_result([Record(file=audio_result)])
-        else:
-            logger.warning(f"[TTS Tool] 未知的 TTS 返回类型: {type(audio_result)}")
-            yield event.plain_result(f"🎤 {text}")
+            if isinstance(audio_result, str):
+                yield event.chain_result([Record(file=audio_result)])
+            elif isinstance(audio_result, bytes):
+                yield event.chain_result([Record(file=audio_result)])
+            else:
+                logger.warning(f"[TTS Tool] 未知的 TTS 返回类型: {type(audio_result)}")
+                yield event.plain_result(f"🎤 {text}")
+        except Exception as e:
+            logger.error(f"[TTS Tool] 语音合成失败: {e}", exc_info=True)
+            yield event.plain_result(f"❌ 语音合成失败: {e}")
 
     # ==================== /tts 命令 ====================
 
     @filter.command("tts")
     async def tts_command(self, event: AstrMessageEvent):
-        """TTS 主命令：/tts <文本> | /tts list | /tts use <名称> | /tts on | /tts off"""
+        """TTS 主命令"""
         message_str = event.message_str.strip()
-        user_name = event.get_sender_name()
 
-        # /tts on
         if message_str == "on":
             self.auto_tts_enabled = True
-            yield event.plain_result("🔊 自动语音模式已开启～心奈会自己决定什么时候发语音喵！")
+            yield event.plain_result("🔊 自动语音模式已开启喵～")
 
-        # /tts off
         elif message_str == "off":
             self.auto_tts_enabled = False
             yield event.plain_result("🔇 自动语音模式已关闭。")
 
-        # /tts list
-        elif message_str == "list" or message_str == "ls":
+        elif message_str in ("list", "ls"):
             all_tts = self.context.get_all_tts_providers()
             if not all_tts:
-                yield event.plain_result("❌ 没有可用的 TTS 模型，请先在 WebUI → Provider 配置喵～")
+                yield event.plain_result("❌ 没有可用的 TTS 模型喵～")
             else:
                 current = self.selected_tts_name or "(系统默认)"
                 lines = [f"🎙️ 可用 TTS 模型 (当前: {current}):"]
                 for p in all_tts:
                     name = p.meta().name
-                    mark = " ✅" if name == self.selected_tts_name or (not self.selected_tts_name and p == self.context.get_using_tts_provider()) else ""
-                    lines.append(f"  • {name}{mark}")
+                    is_current = (
+                        name == self.selected_tts_name or
+                        (not self.selected_tts_name and p == self.context.get_using_tts_provider())
+                    )
+                    lines.append(f"  • {name}{' ✅' if is_current else ''}")
                 yield event.plain_result("\n".join(lines))
 
-        # /tts use <名称>
         elif message_str.startswith("use "):
             tts_name = message_str[4:].strip()
             all_tts = self.context.get_all_tts_providers()
-            found = any(p.meta().name == tts_name for p in all_tts)
-            if found:
+            if any(p.meta().name == tts_name for p in all_tts):
                 self.selected_tts_name = tts_name
                 yield event.plain_result(f"✅ 已切换 TTS 模型为: {tts_name}")
             else:
                 names = ", ".join(p.meta().name for p in all_tts) if all_tts else "无"
                 yield event.plain_result(f"❌ 未找到模型 '{tts_name}'。可用: {names}")
 
-        # /tts <文本> — 手动语音
         elif message_str:
-            result = await self._speak(event, message_str)
-            if result:
+            async for result in self._speak(event, message_str):
                 yield result
 
-        # /tts 无参数
         else:
             yield event.plain_result(
                 "🎙️ TTS 语音工具 (by 心奈)\n"
                 "/tts <文本>      — 转为语音发送\n"
-                "/tts list         — 列出可用 TTS 模型\n"
-                "/tts use <名称>   — 切换 TTS 模型\n"
-                "/tts on           — 开启自动语音\n"
-                "/tts off          — 关闭自动语音"
+                "/tts list         — 列出可用模型\n"
+                "/tts use <名称>   — 切换模型\n"
+                "/tts on/off       — 开关自动语音"
             )
 
     async def terminate(self):
-        """插件卸载时调用"""
+        """插件卸载"""
         logger.info("[TTS Tool] 心奈的语音插件已卸载～再见喵！")
