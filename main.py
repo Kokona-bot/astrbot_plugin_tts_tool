@@ -1,24 +1,46 @@
+"""
+astrbot_plugin_tts_tool — AI 自主 TTS 语音插件
+由 AI（心奈 / Kokona）生成
+"""
+
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 
-@register("helloworld", "YourName", "一个简单的 Hello World 插件", "1.0.0")
-class MyPlugin(Star):
+
+@register("astrbot_plugin_tts_tool", "Kokona-bot (AI Generated)", "AI自主决定发送语音的TTS插件", "1.0.0")
+class TTSPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
+        self.auto_tts_enabled = False
 
     async def initialize(self):
-        """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
+        """插件初始化"""
+        logger.info("[TTS Tool] 心奈的语音插件已就绪喵～")
 
-    # 注册指令的装饰器。指令名为 helloworld。注册成功后，发送 `/helloworld` 就会触发这个指令，并回复 `你好, {user_name}!`
-    @filter.command("helloworld")
-    async def helloworld(self, event: AstrMessageEvent):
-        """这是一个 hello world 指令""" # 这是 handler 的描述，将会被解析方便用户了解插件内容。建议填写。
+    @filter.command("tts")
+    async def tts_command(self, event: AstrMessageEvent):
+        """TTS 主命令：/tts <文本> | /tts on | /tts off"""
+        message_str = event.message_str.strip()
         user_name = event.get_sender_name()
-        message_str = event.message_str # 用户发的纯文本消息字符串
-        message_chain = event.get_messages() # 用户所发的消息的消息链 # from astrbot.api.message_components import *
-        logger.info(message_chain)
-        yield event.plain_result(f"Hello, {user_name}, 你发了 {message_str}!") # 发送一条纯文本消息
+
+        if message_str == "on":
+            self.auto_tts_enabled = True
+            yield event.plain_result(f"🔊 自动语音模式已开启～心奈会自己决定什么时候发语音喵！")
+        elif message_str == "off":
+            self.auto_tts_enabled = False
+            yield event.plain_result(f"🔇 自动语音模式已关闭。")
+        elif message_str:
+            # TODO: 调用 TTS 引擎将 message_str 转为语音发送
+            yield event.plain_result(f"🎤 {user_name}，你想让我说「{message_str}」对吧～功能开发中喵！")
+        else:
+            yield event.plain_result(
+                "用法：\n"
+                "/tts <文本> — 转语音发送\n"
+                "/tts on — 开启自动模式\n"
+                "/tts off — 关闭自动模式"
+            )
 
     async def terminate(self):
-        """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
+        """插件卸载时调用"""
+        logger.info("[TTS Tool] 心奈的语音插件已卸载～再见喵！")
