@@ -25,7 +25,7 @@ class TTSPlugin(Star):
 
     async def initialize(self):
         """插件初始化"""
-        cfg = await self.context.get_config()
+        cfg = self.context.get_config()
         if cfg:
             self.auto_tts_enabled = cfg.get("auto_tts", True)
             self.selected_tts_name = cfg.get("tts_model", None)
