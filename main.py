@@ -81,17 +81,11 @@ class TTSPlugin(Star):
             return
 
         try:
-            loop = asyncio.get_event_loop()
-            audio_result = await loop.run_in_executor(None, tts.text_to_speech, text)
+            # TTSProvider.get_audio(text) -> str (文件路径)，且是 async 方法
+            audio_path = await tts.get_audio(text)
 
             from astrbot.api.message_components import Record
-            if isinstance(audio_result, str):
-                yield event.chain_result([Record(file=audio_result)])
-            elif isinstance(audio_result, bytes):
-                yield event.chain_result([Record(file=audio_result)])
-            else:
-                logger.warning(f"[TTS Tool] 未知的 TTS 返回类型: {type(audio_result)}")
-                yield event.plain_result(f"🎤 {text}")
+            yield event.chain_result([Record(file=audio_path)])
         except Exception as e:
             logger.error(f"[TTS Tool] 语音合成失败: {e}", exc_info=True)
             yield event.plain_result(f"❌ 语音合成失败: {e}")
