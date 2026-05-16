@@ -1,6 +1,15 @@
 name: astrbot_plugin_tts_tool
-display_name: TTS 语音工具
-desc: AI 自主决定发送语音的 TTS 插件，由 AI（心奈）生成
+display_name: TTS 语音工具 🎙️
+short_desc: AI 自主决定发送语音的 TTS 插件
+desc: |
+  让 AI（如心奈）能够自主决定何时发送语音消息。
+  
+  核心功能：
+  - 注册 send_voice LLM Tool，AI 可主动调用发送 TTS 语音
+  - 支持从 AstrBot 已配置的 TTS 模型中自由切换
+  - 提供 /tts 命令手动控制语音发送
+  
+  由 AI（心奈 / Kokona）完全生成。
 version: v1.0.0
 author: Kokona-bot (AI Generated)
 repo: https://github.com/Kokona-bot/astrbot_plugin_tts_tool
